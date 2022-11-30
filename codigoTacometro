@@ -1,0 +1,95 @@
+// insertamos una libreria especial para poder programar la pantalla lcd
+#include <LiquidCrystal_I2C.h>
+//Nombramos las variables, dado que nuestros sensores usan valores fuera de -32,768 a 32,767
+LiquidCrystal_I2C lcd (0x27, 16, 2);
+
+const byte PulsoPorVuelta = 2;
+const unsigned long TiempoFuera = 100000;
+const byte Sensor = 2;
+
+volatile unsigned long UltimaVezQueMedimos;
+volatile unsigned long TiempoEntrePulsos = TiempoFuera + 1000;
+volatile unsigned long TiempoPromedio = TiempoFuera + 1000;
+unsigned long Frequencia;
+unsigned long FrequenciaSensor;
+unsigned long RPM;
+unsigned int PulseCounter = 1;
+unsigned long PeriodSum;
+
+unsigned long UltimoCiclo = UltimaVezQueMedimos;
+unsigned long Micros = micros();
+unsigned int AmountOfReadings = 1;
+unsigned int ZeroDebouncingExtra;
+unsigned long readings[Sensor];
+unsigned long readIndex;  
+unsigned long total; 
+unsigned long average;
+void setup() {
+  Serial.begin(9600);
+ lcd.begin(16,2);
+  attachInterrupt(digitalPinToInterrupt(2), Pulse_Event, RISING);
+  delay(1000);
+
+}
+void loop() {
+  UltimoCiclo = UltimaVezQueMedimos;
+  Micros = micros();
+  if (Micros <UltimaVezQueMedimos) {
+    UltimoCiclo = Micros;
+  }
+  Frequencia = 10000000000 / TiempoPromedio;
+  if (TiempoEntrePulsos > TiempoFuera - ZeroDebouncingExtra || Micros - UltimaVezQueMedimos > TiempoFuera - ZeroDebouncingExtra) {
+    Frequencia = 0;  // Set frequency as 0.
+    ZeroDebouncingExtra = 2000;
+  } else {
+    ZeroDebouncingExtra = 0;
+  }
+  FrequenciaSensor = Frequencia / 10000;
+
+  RPM = Frequencia / PulsoPorVuelta * 60;
+  RPM = RPM / 10000;
+  total = total - readings[readIndex];
+  readings[readIndex] = RPM;
+  total = total + readings[readIndex];
+  readIndex = readIndex + 1;
+
+  if (readIndex >= Sensor) {
+    readIndex = 0;
+  }
+  average = total / Sensor;
+  
+
+
+
+  
+  lcd.setCursor(0, 0);
+  lcd.print("RPM : ");
+  lcd.print(RPM);
+  lcd.print("   ");
+
+  if (RPM>=1000){
+  lcd.setCursor(0, 0);
+  lcd.print("Bajele mi loco");
+  delay(1000);
+  lcd.setCursor(0, 0);
+  lcd.print("   ");
+  }
+
+}
+
+void Pulse_Event() {
+  TiempoEntrePulsos = micros() - UltimaVezQueMedimos;
+UltimaVezQueMedimos = micros();
+  if (PulseCounter >= AmountOfReadings)  {
+    TiempoPromedio = PeriodSum / AmountOfReadings;
+    PulseCounter = 1;
+    PeriodSum = TiempoEntrePulsos;
+
+    int RemapedAmountOfReadings = map(TiempoEntrePulsos, 40000, 5000, 1, 10);
+    RemapedAmountOfReadings = constrain(RemapedAmountOfReadings, 1, 10);
+    AmountOfReadings = RemapedAmountOfReadings;
+  } else {
+    PulseCounter++;
+    PeriodSum = PeriodSum + TiempoEntrePulsos;
+  }
+}
